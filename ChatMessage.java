@@ -1,6 +1,7 @@
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.io.ByteArrayOutputStream;
-import org.json.JSONObject;
+import java.util.Arrays;
 
 public class ChatMessage {
 
@@ -22,39 +23,81 @@ public class ChatMessage {
         this.content = content;
     }
 
-    // ====== JSON SERIALIZATION ======
+    public MessageType getType() { return type; }
+    public String getSender() { return sender; }
+    public String getRecipient() { return recipient; }
+    public String getRoom() { return room; }
+    public String getContent() { return content; }
+
+    /* ---------------- JSON MINIMALISTE ---------------- */
+
     public String toJSON() {
-        JSONObject obj = new JSONObject();
-        obj.put("type", type.toString());
-        obj.put("version", version);
-        obj.put("timestamp", timestamp);
-        obj.put("sender", sender);
-        obj.put("recipient", recipient);
-        obj.put("room", room);
-        obj.put("content", content);
-        return obj.toString();
+        return "{\"type\":\"" + type +
+                "\",\"version\":" + version +
+                ",\"timestamp\":" + timestamp +
+                ",\"sender\":" + quote(sender) +
+                ",\"recipient\":" + quote(recipient) +
+                ",\"room\":" + quote(room) +
+                ",\"content\":" + quote(content) +
+                "}";
     }
+
+    private static String quote(String s) {
+        if (s == null) return "null";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    /* ---------------- PARSE JSON ---------------- */
 
     public static ChatMessage fromJSON(String json) {
-        JSONObject obj = new JSONObject(json);
+        try {
+            String type = extract(json, "\"type\":\"", "\"");
+            String sender = unquote(extract(json, "\"sender\":", ","));
+            String recipient = unquote(extract(json, "\"recipient\":", ","));
+            String room = unquote(extract(json, "\"room\":", ","));
 
-        MessageType type = MessageType.valueOf(obj.getString("type"));
-        String sender = obj.optString("sender", null);
-        String recipient = obj.optString("recipient", null);
-        String room = obj.optString("room", null);
-        String content = obj.optString("content", null);
+            String contentField = json.substring(json.indexOf("\"content\":") + 10);
+            String content = unquote(contentField.replace("}", "").trim());
 
-        ChatMessage msg = new ChatMessage(type, sender, recipient, room, content);
-        msg.version = obj.optInt("version", 1);
-        msg.timestamp = obj.optLong("timestamp", Instant.now().toEpochMilli());
-        return msg;
+            return new ChatMessage(
+                    MessageType.valueOf(type),
+                    sender,
+                    recipient,
+                    room,
+                    content
+            );
+
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    // ====== BINARY SERIALIZATION (header + JSON body) ======
+    private static String extract(String json, String startToken, String endToken) {
+        int start = json.indexOf(startToken);
+        if (start == -1) return null;
+        start += startToken.length();
+        int end = json.indexOf(endToken, start);
+        if (end == -1) return null;
+        return json.substring(start, end);
+    }
+
+    private static String unquote(String s) {
+        if (s == null || s.equals("null")) return null;
+        s = s.trim();
+        if (s.startsWith("\"") && s.endsWith("\"")) {
+            s = s.substring(1, s.length() - 1)
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+        }
+        return s;
+    }
+
+    /* ---------------- SERIALIZATION ---------------- */
+
     public byte[] toBytes() {
         try {
             String json = toJSON();
-            byte[] body = json.getBytes("UTF-8");
+            byte[] body = json.getBytes(StandardCharsets.UTF_8);
 
             int length = body.length;
 
@@ -63,19 +106,19 @@ public class ChatMessage {
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-            // 4 bytes: length
+            // length
             out.write((length >> 24) & 0xFF);
             out.write((length >> 16) & 0xFF);
             out.write((length >> 8) & 0xFF);
             out.write(length & 0xFF);
 
-            // 4 bytes: checksum
+            // checksum
             out.write((int)((checksum >> 24) & 0xFF));
             out.write((int)((checksum >> 16) & 0xFF));
             out.write((int)((checksum >> 8) & 0xFF));
             out.write((int)(checksum & 0xFF));
 
-            // JSON body
+            // body
             out.write(body);
 
             return out.toByteArray();
@@ -85,46 +128,29 @@ public class ChatMessage {
         }
     }
 
-    // ====== BINARY DESERIALIZATION ======
     public static ChatMessage fromBytes(byte[] data) {
         try {
-            // Read length
             int length = ((data[0] & 0xFF) << 24) |
                          ((data[1] & 0xFF) << 16) |
                          ((data[2] & 0xFF) << 8) |
                          (data[3] & 0xFF);
 
-            // Read checksum
-            long expectedChecksum = ((data[4] & 0xFFL) << 24) |
-                                    ((data[5] & 0xFFL) << 16) |
-                                    ((data[6] & 0xFFL) << 8) |
-                                    (data[7] & 0xFFL);
+            long expected = ((data[4] & 0xFFL) << 24) |
+                            ((data[5] & 0xFFL) << 16) |
+                            ((data[6] & 0xFFL) << 8) |
+                            (data[7] & 0xFFL);
 
-            // Extract body
-            byte[] body = new byte[length];
-            System.arraycopy(data, 8, body, 0, length);
+            byte[] body = Arrays.copyOfRange(data, 8, 8 + length);
 
-            // Calculate checksum
-            long actualChecksum = 0;
-            for (byte b : body) actualChecksum += (b & 0xFF);
+            long actual = 0;
+            for (byte b : body) actual += (b & 0xFF);
 
-            // Validate checksum
-            if (actualChecksum != expectedChecksum) return null;
+            if (actual != expected) return null;
 
-            String json = new String(body, "UTF-8");
-
-            return fromJSON(json);
+            return fromJSON(new String(body, StandardCharsets.UTF_8));
 
         } catch (Exception e) {
             return null;
         }
     }
-
-    // ====== GETTERS ======
-    public MessageType getType() { return type; }
-    public String getSender() { return sender; }
-    public String getRecipient() { return recipient; }
-    public String getRoom() { return room; }
-    public String getContent() { return content; }
-    public long getTimestamp() { return timestamp; }
 }
