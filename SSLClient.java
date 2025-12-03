@@ -1,3 +1,4 @@
+
 import javax.net.ssl.*;
 import java.io.*;
 import java.security.SecureRandom;
@@ -55,6 +56,7 @@ public class SSLClient {
         try {
             SSLClient client = new SSLClient("localhost", 8443, true); // testing mode
             client.connect();
+            System.out.println("Sent: hello from client");
             client.sendMessage("hello from client");
             System.out.println(client.receiveResponse());
             client.disconnect();
