@@ -73,11 +73,8 @@ public class SSLClient {
 
     public static void main(String[] args) {
         try {
-<<<<<<< HEAD
-            SSLClient client = new SSLClient("localhost", 8443, true);
-=======
             SSLClient client = new SSLClient("localhost", 8443, false); // testing mode : trustAllCerts = true ||| production mode : false
->>>>>>> a8677123b2dd19b18ad62643bf5f4b345a4f5d47
+
             client.connect();
 
             client.sendFrame((byte)1, "alice"); // login
