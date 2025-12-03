@@ -1,4 +1,4 @@
-package SSL_TLS_Communication;
+
 import javax.net.ssl.*;
 import java.io.*;
 import java.net.InetSocketAddress;
