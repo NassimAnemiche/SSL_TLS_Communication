@@ -54,7 +54,7 @@ public class SSLClient {
 
     public static void main(String[] args) {
         try {
-            SSLClient client = new SSLClient("localhost", 8443, true); // testing mode
+            SSLClient client = new SSLClient("localhost", 8443, false); // testing mode : trustAllCerts = true ||| production mode : false
             client.connect();
             System.out.println("Sent: hello from client");
             client.sendMessage("hello from client");
